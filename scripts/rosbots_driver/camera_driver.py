@@ -161,12 +161,16 @@ def main():
                           dlink932l_pwd=dlink932l_pwd)
     
     rate = rospy.Rate(5) # 5 Hz
+    rate_no_conn = rospy.Rate(0.5)
     while not rospy.is_shutdown():
-        img_ct.get_image()
-        img_msg = bridge.cv2_to_imgmsg(img_ct.get_original_cv_image(), "bgr8")
-        image_pub.publish(img_msg)
-        
-        rate.sleep()
+        if image_pub.get_num_connections() > 0:
+            img_ct.get_image()
+            img_msg = bridge.cv2_to_imgmsg(img_ct.get_original_cv_image(), "bgr8")
+            image_pub.publish(img_msg)
+            rate.sleep()
+        else:
+            rospy.loginfo("No one")
+            rate_no_conn.sleep()
 
 if __name__ == '__main__':
     try:

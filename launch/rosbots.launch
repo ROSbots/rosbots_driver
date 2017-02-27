@@ -1,0 +1,8 @@
+<launch>
+
+  <node pkg="rosbots_driver" type="motor_driver.py" name="rosbot_01">
+    <param name="wheel_diameter_mm" value="70.06" type="double"/>
+    <param name="wheel_encoder_ticks_per_rotation" value="20.0" type="double"/>
+  </node>
+  
+</launch>
