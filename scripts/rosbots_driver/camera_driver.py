@@ -24,7 +24,7 @@
 #
 #     http://www.rosbots.com
 #
-
+import time
 import requests
 import numpy as np
 import cv2
@@ -39,6 +39,7 @@ def shutdown_cb():
 class ImgContainer(object):
     SRC_PICAMERA=1
     SRC_932L=2
+    SRC_932L_MJPEG=3
 
     _picamera = None
     _piraw_capture = None
@@ -75,6 +76,18 @@ class ImgContainer(object):
         cam_url = "http://" + self._932l_ip + "/image/jpeg.cgi"
             
         self._get_image_url(cam_url, username, password)
+
+    def get_image_932l_mjpeg(self):
+        # Grab a whole bunch of frames till we're up to date
+        for idx in range(0, 200):
+            grab_time = time.time()
+            self._vid_capture.grab()
+            if time.time() - grab_time > 0.001:
+                break;
+            
+        ret, self._cv_img_orig = self._vid_capture.retrieve()
+        self._cv_img = cv2.GaussianBlur(self._cv_img_orig, (5,5), 0)
+        
         
     def get_image_picamera(self):
         self._piraw_capture.truncate(0)
@@ -93,9 +106,14 @@ class ImgContainer(object):
                 self.get_image_picamera()
             elif self._source == ImgContainer.SRC_932L:
                 self.get_image_932l()
+            elif self._source == ImgContainer.SRC_932L_MJPEG:
+                self.get_image_932l_mjpeg()
             self._valid = True
         except Exception as ex:
             self._valid = False
+
+            # Try to connect again - really only applicable to video stream?
+            self.connect()
             raise ex
 
     def __init__(self, source=SRC_932L, fn=None,
@@ -108,11 +126,32 @@ class ImgContainer(object):
                 self._932l_ip = dlink932l_ip
                 self._932l_uname = dlink932l_uname
                 self._932l_pwd = dlink932l_pwd
+            elif source == ImgContainer.SRC_932L_MJPEG:
+                self._932l_ip = dlink932l_ip
+                self._932l_uname = dlink932l_uname
+                self._932l_pwd = dlink932l_pwd
+                
+                self._vid_capture = cv2.VideoCapture()
+                    
             self._valid = True
         except Exception as ex:
             self._valid = False
             raise ex
 
+    def connect(self):
+        if self._source == ImgContainer.SRC_932L_MJPEG and \
+           self._vid_capture.isOpened() == False:
+            # Open connection
+            self._vid_capture.open("http://" + self._932l_uname + ":" + \
+                                   self._932l_pwd + "@" + self._932l_ip + \
+                                   "/MJPEG.CGI?.mjpg") 
+
+    def release(self):
+        if self._source == ImgContainer.SRC_932L_MJPEG and \
+           self._vid_capture.isOpened() == True:
+            # Close
+            self._vid_capture.release()
+            
     def valid(self):
         return self._valid 
         
@@ -142,9 +181,11 @@ def main():
     param_dl_ip = "dlink932l_ip"
     param_dl_uname = "dlink932l_username"
     param_dl_pwd = "dlink932l_pwd"
+    param_dl_use_mjpeg = "dlink932_use_mjpeg"
     dlink932l_ip = rospy.get_param("~" + param_dl_ip, default=None)
     dlink932l_uname = rospy.get_param("~" + param_dl_uname, default="admin")
     dlink932l_pwd = rospy.get_param("~" + param_dl_pwd, default="")
+    dlink932l_use_mjpeg = rospy.get_param("~" + param_dl_use_mjpeg, default=False)
     
     rospy.on_shutdown(shutdown_cb)
     
@@ -154,22 +195,34 @@ def main():
     if dlink932l_ip == None:
         src_img = ImgContainer.SRC_PICAMERA 
     else:
-        src_img = ImgContainer.SRC_932L
+        if dlink932l_use_mjpeg == True:
+            src_img = ImgContainer.SRC_932L_MJPEG
+        else:
+            src_img = ImgContainer.SRC_932L
         
     img_ct = ImgContainer(src_img, fn=None, dlink932l_ip=dlink932l_ip,
                           dlink932l_uname=dlink932l_uname,
                           dlink932l_pwd=dlink932l_pwd)
-    
-    rate = rospy.Rate(5) # 5 Hz
+
+    prev_connections = 0
+    rate = rospy.Rate(15) # 5 Hz
     rate_no_conn = rospy.Rate(0.5)
     while not rospy.is_shutdown():
         if image_pub.get_num_connections() > 0:
+            if prev_connections == 0:
+                img_ct.connect()
+                prev_connections = 1
+                
             img_ct.get_image()
             img_msg = bridge.cv2_to_imgmsg(img_ct.get_original_cv_image(), "bgr8")
             image_pub.publish(img_msg)
             rate.sleep()
         else:
-            rospy.loginfo("No one")
+            if prev_connections != 0:
+                img_ct.release()
+                prev_connections = 0
+
+            #rospy.loginfo("No one")
             rate_no_conn.sleep()
 
 if __name__ == '__main__':
