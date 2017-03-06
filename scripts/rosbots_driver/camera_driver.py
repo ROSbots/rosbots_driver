@@ -77,14 +77,20 @@ class ImgContainer(object):
             
         self._get_image_url(cam_url, username, password)
 
-    def get_image_932l_mjpeg(self):
+    def _get_image_932l_mjpeg_ffwd(self):
         # Grab a whole bunch of frames till we're up to date
         for idx in range(0, 200):
-            grab_time = time.time()
+            grab_time = rospy.Time.now()
             self._vid_capture.grab()
-            if time.time() - grab_time > 0.001:
+            dur = rospy.Time.now() - grab_time
+            #rospy.loginfo("Time to grab: " + str(dur.to_sec()))
+            if dur.to_sec() > 0.001:
+                #rospy.loginfo("Retrieving frame")
                 break;
             
+    def get_image_932l_mjpeg(self):
+        self._get_image_932l_mjpeg_ffwd()
+        
         ret, self._cv_img_orig = self._vid_capture.retrieve()
         self._cv_img = cv2.GaussianBlur(self._cv_img_orig, (5,5), 0)
         
@@ -117,7 +123,8 @@ class ImgContainer(object):
             raise ex
 
     def __init__(self, source=SRC_932L, fn=None,
-                 dlink932l_ip=None, dlink932l_uname=None, dlink932l_pwd=None):
+                 dlink932l_ip=None, dlink932l_uname=None, dlink932l_pwd=None,
+                 video_hz=15):
         try:
             self._source = source
             if source == ImgContainer.SRC_PICAMERA:
@@ -132,6 +139,7 @@ class ImgContainer(object):
                 self._932l_pwd = dlink932l_pwd
                 
                 self._vid_capture = cv2.VideoCapture()
+                self._vid_hz = video_hz
                     
             self._valid = True
         except Exception as ex:
@@ -142,10 +150,16 @@ class ImgContainer(object):
         if self._source == ImgContainer.SRC_932L_MJPEG and \
            self._vid_capture.isOpened() == False:
             # Open connection
+            start_time = rospy.Time.now()
             self._vid_capture.open("http://" + self._932l_uname + ":" + \
                                    self._932l_pwd + "@" + self._932l_ip + \
-                                   "/MJPEG.CGI?.mjpg") 
+                                   "/MJPEG.CGI?.mjpg")
+            dur_open = rospy.Time.now() - start_time
 
+            # Fast forward past buffered frames
+            for iii in range(0, int(dur_open.to_sec() * self._vid_hz)):
+                self._vid_capture.grab()
+            
     def release(self):
         if self._source == ImgContainer.SRC_932L_MJPEG and \
            self._vid_capture.isOpened() == True:
@@ -185,11 +199,12 @@ def main():
     dlink932l_ip = rospy.get_param("~" + param_dl_ip, default=None)
     dlink932l_uname = rospy.get_param("~" + param_dl_uname, default="admin")
     dlink932l_pwd = rospy.get_param("~" + param_dl_pwd, default="")
-    dlink932l_use_mjpeg = rospy.get_param("~" + param_dl_use_mjpeg, default=False)
+    dlink932l_use_mjpeg = rospy.get_param("~" + param_dl_use_mjpeg, default=True)
+    mjpeg_hz = rospy.get_param("~mjpeg_hz", default=15)
     
     rospy.on_shutdown(shutdown_cb)
     
-    image_pub = rospy.Publisher("camera_image",Image, queue_size=5)
+    image_pub = rospy.Publisher("camera_image",Image, queue_size=25)
     bridge = CvBridge()
 
     if dlink932l_ip == None:
@@ -202,7 +217,8 @@ def main():
         
     img_ct = ImgContainer(src_img, fn=None, dlink932l_ip=dlink932l_ip,
                           dlink932l_uname=dlink932l_uname,
-                          dlink932l_pwd=dlink932l_pwd)
+                          dlink932l_pwd=dlink932l_pwd,
+                          video_hz=mjpeg_hz)
 
     prev_connections = 0
     rate = rospy.Rate(15) # 5 Hz
