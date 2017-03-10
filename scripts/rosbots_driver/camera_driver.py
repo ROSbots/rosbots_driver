@@ -79,12 +79,14 @@ class ImgContainer(object):
 
     def _get_image_932l_mjpeg_ffwd(self):
         # Grab a whole bunch of frames till we're up to date
+        self._img_ts = rospy.Time()
         for idx in range(0, 200):
             grab_time = rospy.Time.now()
             self._vid_capture.grab()
             dur = rospy.Time.now() - grab_time
             #rospy.loginfo("Time to grab: " + str(dur.to_sec()))
             if dur.to_sec() > 0.001:
+                self._img_ts = grab_time + (dur * 0.5)
                 #rospy.loginfo("Retrieving frame")
                 break;
             
@@ -106,6 +108,9 @@ class ImgContainer(object):
         self._cv_img_orig = cv2.imread(fn) #, flags=0)
         self._cv_img = cv2.GaussianBlur(self._cv_img_orig, (5,5), 0)
 
+    def get_image_ts(self):
+        return self._img_ts
+    
     def get_image(self):
         try:
             if self._source == ImgContainer.SRC_PICAMERA:
@@ -127,6 +132,7 @@ class ImgContainer(object):
                  video_hz=15):
         try:
             self._source = source
+            self._img_ts = rospy.Time()
             if source == ImgContainer.SRC_PICAMERA:
                 self.init_picamera()
             elif source == ImgContainer.SRC_932L:
@@ -231,6 +237,8 @@ def main():
                 
             img_ct.get_image()
             img_msg = bridge.cv2_to_imgmsg(img_ct.get_original_cv_image(), "bgr8")
+            img_msg.header.stamp = img_ct.get_image_ts()
+            img_msg.header.frame_id = "0"
             image_pub.publish(img_msg)
             rate.sleep()
         else:
