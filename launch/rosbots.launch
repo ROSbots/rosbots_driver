@@ -5,4 +5,9 @@
     <param name="wheel_encoder_ticks_per_rotation" value="20.0" type="double"/>
   </node>
   
+  <node pkg="rosbots_driver" type="pulse_power.py" name="rosbot_01_pulse_power">
+    <param name="pulse_hertz" value="0.05" type="double"/>
+    <param name="pulse_width_sec" value="1.2" type="double"/>
+  </node>
+  
 </launch>
