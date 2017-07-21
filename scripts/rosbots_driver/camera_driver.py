@@ -51,8 +51,8 @@ class ImgContainer(object):
             from picamera import PiCamera
             cls._picamera = PiCamera()
             cls._picamera.resolution = (640,480)
-            cls._picamera.vflip = True
-            cls._picamera.hflip = True
+            cls._picamera.vflip = False 
+            cls._picamera.hflip = False 
             cls._picamera.framerate = 16
             cls._piraw_capture = PiRGBArray(cls._picamera)
 
