@@ -4,10 +4,16 @@
     <param name="wheel_diameter_mm" value="70.06" type="double"/>
     <param name="wheel_encoder_ticks_per_rotation" value="20.0" type="double"/>
   </node>
-  
+
+  <!-- When using USB power banks as the motor battery, use this ROS node
+       to keep the USB power bank from shutting off. It basically triggers an
+       NPN transistor to draw current from the power bank at a regular
+       interval to keep the power bank on. -->
+  <!--
   <node pkg="rosbots_driver" type="pulse_power.py" name="rosbot_01_pulse_power">
     <param name="pulse_hertz" value="0.05" type="double"/>
     <param name="pulse_width_sec" value="1.2" type="double"/>
   </node>
+    -->
   
 </launch>
