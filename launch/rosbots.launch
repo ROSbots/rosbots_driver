@@ -1,9 +1,14 @@
 <launch>
 
+  <!-- something in rosbots_driver causes non-deterministic kernel panics
+       with the 2017-07 raspbian.  Could be the unsupported RPIO library.
+       Disabling for now -->
+  <!--
   <node pkg="rosbots_driver" type="motor_driver.py" name="rosbot_01">
     <param name="wheel_diameter_mm" value="70.06" type="double"/>
     <param name="wheel_encoder_ticks_per_rotation" value="20.0" type="double"/>
   </node>
+  --?
 
   <!-- When using USB power banks as the motor battery, use this ROS node
        to keep the USB power bank from shutting off. It basically triggers an
@@ -14,6 +19,6 @@
     <param name="pulse_hertz" value="0.05" type="double"/>
     <param name="pulse_width_sec" value="1.2" type="double"/>
   </node>
-    -->
+  -->
   
 </launch>
