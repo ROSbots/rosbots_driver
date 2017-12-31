@@ -99,8 +99,11 @@ class ImgContainer(object):
         
     def get_image_picamera(self):
         self._piraw_capture.truncate(0)
+        grab_time = rospy.Time.now()
         self._picamera.capture(self._piraw_capture, format="bgr", \
                                use_video_port=True)
+        dur = rospy.Time.now() - grab_time
+        self._img_ts = grab_time + (dur * 0.5)
         self._cv_img_orig = self._piraw_capture.array
         self._cv_img = cv2.GaussianBlur(self._cv_img_orig, (5,5), 0)
 
