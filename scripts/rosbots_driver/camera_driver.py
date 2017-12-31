@@ -164,6 +164,14 @@ class ImgContainer(object):
                                    self._932l_pwd + "@" + self._932l_ip + \
                                    "/MJPEG.CGI?.mjpg")
             dur_open = rospy.Time.now() - start_time
+            if self._vid_capture.isOpened() is False:
+                # Try another url
+                rospy.loginfo("MJPEG.CGI did not work, trying video.cgi...")
+                start_time = rospy.Time.now()
+                self._vid_capture.open("http://" + self._932l_uname + ":" + \
+                                       self._932l_pwd + "@" + self._932l_ip + \
+                                       "/video.cgi")
+                dur_open = rospy.Time.now() - start_time
 
             # Fast forward past buffered frames
             for iii in range(0, int(dur_open.to_sec() * self._vid_hz)):
