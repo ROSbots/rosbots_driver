@@ -30,7 +30,7 @@ void twistCb( const geometry_msgs::Twist &twist_msg ) {
   str_msg.data = twist_rcv;
   chatter.publish( &str_msg );
 }
-ros::Subscriber<geometry_msgs::Twist> sub("twist", &twistCb );
+ros::Subscriber<geometry_msgs::Twist> sub("cmd_vel", &twistCb );
 
 
 void setup()
@@ -40,6 +40,7 @@ void setup()
 
   nh.initNode();
   nh.advertise(chatter);
+  nh.subscribe(sub);
 }
 
 void loop()
@@ -56,6 +57,7 @@ void loop()
   
   str_msg.data = hello;
   chatter.publish( &str_msg );
+  nh.loginfo("UNO blinked");
   nh.spinOnce();
 
   // wait for a second
