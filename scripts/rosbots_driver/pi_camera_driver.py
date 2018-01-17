@@ -25,7 +25,6 @@
 #     http://www.rosbots.com
 #
 import time
-import requests
 import io
 import numpy as np
 import cv2
