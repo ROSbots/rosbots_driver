@@ -40,6 +40,7 @@ class ImgContainer(object):
     SRC_PICAMERA=1
     SRC_932L=2
     SRC_932L_MJPEG=3
+    SRC_W3=4
 
     _picamera = None
     _piraw_capture = None
@@ -120,7 +121,8 @@ class ImgContainer(object):
                 self.get_image_picamera()
             elif self._source == ImgContainer.SRC_932L:
                 self.get_image_932l()
-            elif self._source == ImgContainer.SRC_932L_MJPEG:
+            elif self._source == ImgContainer.SRC_932L_MJPEG or \
+                 self._source == ImgContainer.SRC_W3:
                 self.get_image_932l_mjpeg()
             self._valid = True
         except Exception as ex:
@@ -142,7 +144,8 @@ class ImgContainer(object):
                 self._932l_ip = dlink932l_ip
                 self._932l_uname = dlink932l_uname
                 self._932l_pwd = dlink932l_pwd
-            elif source == ImgContainer.SRC_932L_MJPEG:
+            elif source == ImgContainer.SRC_932L_MJPEG or \
+                 source == ImgContainer.SRC_W3:
                 self._932l_ip = dlink932l_ip
                 self._932l_uname = dlink932l_uname
                 self._932l_pwd = dlink932l_pwd
@@ -156,15 +159,22 @@ class ImgContainer(object):
             raise ex
 
     def connect(self):
-        if self._source == ImgContainer.SRC_932L_MJPEG and \
+        if (self._source == ImgContainer.SRC_932L_MJPEG or \
+            self._source == ImgContainer.SRC_W3) and \
            self._vid_capture.isOpened() == False:
             # Open connection
             start_time = rospy.Time.now()
-            self._vid_capture.open("http://" + self._932l_uname + ":" + \
-                                   self._932l_pwd + "@" + self._932l_ip + \
-                                   "/MJPEG.CGI?.mjpg")
+            if self._source == ImgContainer.SRC_932L_MJPEG:
+                self._vid_capture.open("http://" + self._932l_uname + ":" + \
+                                       self._932l_pwd + "@" + self._932l_ip + \
+                                       "/MJPEG.CGI?.mjpg")
+            elif self._source == ImgContainer.SRC_W3:
+                self._vid_capture.open("rtsp://" + self._932l_uname + ":" + \
+                                       self._932l_pwd + "@" + self._932l_ip + \
+                                       "/live/ch1")
             dur_open = rospy.Time.now() - start_time
-            if self._vid_capture.isOpened() is False:
+            if self._source == ImgContainer.SRC_932L_MJPEG and \
+               self._vid_capture.isOpened() is False:
                 # Try another url
                 rospy.loginfo("MJPEG.CGI did not work, trying video.cgi...")
                 start_time = rospy.Time.now()
@@ -178,7 +188,8 @@ class ImgContainer(object):
                 self._vid_capture.grab()
             
     def release(self):
-        if self._source == ImgContainer.SRC_932L_MJPEG and \
+        if (self._source == ImgContainer.SRC_932L_MJPEG or \
+            self._source == ImgContainer.SRC_W3) and \
            self._vid_capture.isOpened() == True:
             # Close
             self._vid_capture.release()
@@ -213,10 +224,12 @@ def main():
     param_dl_uname = "dlink932l_username"
     param_dl_pwd = "dlink932l_pwd"
     param_dl_use_mjpeg = "dlink932_use_mjpeg"
+    param_w3 = "w3_camera"
     dlink932l_ip = rospy.get_param("~" + param_dl_ip, default=None)
     dlink932l_uname = rospy.get_param("~" + param_dl_uname, default="admin")
     dlink932l_pwd = rospy.get_param("~" + param_dl_pwd, default="")
     dlink932l_use_mjpeg = rospy.get_param("~" + param_dl_use_mjpeg, default=True)
+    w3_camera = rospy.get_param("~" + param_w3, default=False)
     mjpeg_hz = rospy.get_param("~mjpeg_hz", default=15)
     
     rospy.on_shutdown(shutdown_cb)
@@ -227,10 +240,13 @@ def main():
     if dlink932l_ip == None:
         src_img = ImgContainer.SRC_PICAMERA 
     else:
-        if dlink932l_use_mjpeg == True:
-            src_img = ImgContainer.SRC_932L_MJPEG
+        if w3_camera == True:
+            src_img = ImgContainer.SRC_W3
         else:
-            src_img = ImgContainer.SRC_932L
+            if dlink932l_use_mjpeg == True:
+                src_img = ImgContainer.SRC_932L_MJPEG
+            else:
+                src_img = ImgContainer.SRC_932L
         
     img_ct = ImgContainer(src_img, fn=None, dlink932l_ip=dlink932l_ip,
                           dlink932l_uname=dlink932l_uname,
