@@ -99,6 +99,9 @@ void setup()
     
     nh.advertise(rticks_pub);
     nh.advertise(lticks_pub);
+
+    // Necessary for encoder interrupts to initialize
+    delay(200);
 }
 
 unsigned long last_tick_publish_ms = 0;
@@ -124,5 +127,5 @@ void loop()
   nh.spinOnce();
 
   // wait for a second
-  //delay(1000);
+  delay(200);
 }

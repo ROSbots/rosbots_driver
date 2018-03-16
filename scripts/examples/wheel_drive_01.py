@@ -24,12 +24,6 @@
 #
 #     http://www.rosbots.com
 #
-# This module pulses the power to a 5v power bank using a 2222 NPN transistor
-# to prevent the power bank from shutting down due to inactivity. This allows
-# us to use the power bank to power the wheels in place of the 4xAA battery
-# pack. But since the wheels are not powered all the time, without this pulse
-# module, the power bank will just shut itself off.
-#
 
 import math
 
