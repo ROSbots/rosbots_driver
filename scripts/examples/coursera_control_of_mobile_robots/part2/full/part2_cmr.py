@@ -30,7 +30,7 @@ import rospy
 from controller.supervisor import Supervisor
     
 def main():
-    rospy.init_node('week2_cmr', anonymous=False)
+    rospy.init_node('part2_cmr', anonymous=False)
     
     supervisor = Supervisor()
     
