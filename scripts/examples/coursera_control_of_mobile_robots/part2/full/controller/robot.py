@@ -121,9 +121,11 @@ class Robot:
         self.cur_wheel_power_left.data = self.velocity_to_power(vl)
 
         # Publish out
-        rospy.loginfo(rospy.get_caller_id() +
-                      " right power: " + str(self.cur_wheel_power_right) +
-                      " left power: " + str(self.cur_wheel_power_left))
+        if self.cur_wheel_power_right.data != 0.0 or \
+           self.cur_wheel_power_left.data != 0.0:
+            rospy.loginfo(rospy.get_caller_id() +
+                          " right power: " + str(self.cur_wheel_power_right) +
+                          " left power: " + str(self.cur_wheel_power_left))
         self.pub_power_right.publish(self.cur_wheel_power_right)
         self.pub_power_left.publish(self.cur_wheel_power_left)
         

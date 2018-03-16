@@ -50,13 +50,17 @@ class Supervisor:
     def execute(self):
         # Get commands in unicycle model
         ctrl_output = self.current_controller.execute()
-        rospy.loginfo(rospy.get_caller_id() + " v: " + str(ctrl_output["v"]) +
-                      " w: " + str(ctrl_output["w"]))
 
         # Convert unicycle model commands to differential drive model
         diff_output = self.dd.uni_to_diff(ctrl_output["v"], ctrl_output["w"])
-        rospy.loginfo(rospy.get_caller_id() + " vl: " + str(diff_output["vl"]) +
-                      " vr: " + str(diff_output["vr"]))
+
+        if ctrl_output["v"] != 0.0 or ctrl_output["w"] != 0.0:
+            rospy.loginfo(rospy.get_caller_id() + " v: " +
+                          str(ctrl_output["v"]) +
+                          " w: " + str(ctrl_output["w"]))
+            rospy.loginfo(rospy.get_caller_id() + " vl: " +
+                          str(diff_output["vl"]) +
+                          " vr: " + str(diff_output["vr"]))
         
         # Set the wheel speeds
         self.robot.set_wheel_speed(diff_output["vr"], diff_output["vl"])
