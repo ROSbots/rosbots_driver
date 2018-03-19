@@ -128,8 +128,13 @@ class ImgContainer(object):
         except Exception as ex:
             self._valid = False
 
-            # Try to connect again - really only applicable to video stream?
-            self.connect()
+            # Try to cleanly disconnect before raising exception to crash
+            rospy.logfatal("Releasing then raising exception")
+            self.release()
+
+            # We are 99% likely to crash, wait a sec so respawn doesn't
+            # rerun right away
+            rospy.sleep(2)
             raise ex
 
     def __init__(self, source=SRC_932L, fn=None,
