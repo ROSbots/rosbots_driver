@@ -29,7 +29,7 @@ import math
 import rospy
 import tf
 import tf2_ros
-from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import Pose2D, TransformStamped
 
 from robot import Robot
 from rc_teleop import RCTeleop
@@ -153,9 +153,8 @@ class Supervisor:
         self.prev_wheel_ticks["l"] = ticks["l"]
 
         # Broadcast pose as ROS tf
-        """
         br = tf2_ros.TransformBroadcaster()
-        t = geometry_msgs.msg.TransformStamped()
+        t = TransformStamped()
         t.header.stamp = rospy.Time.now()
         t.header.frame_id = "world"
         t.child_frame_id = "rosbots_robot"
@@ -168,6 +167,5 @@ class Supervisor:
         t.transform.rotation.z = q[2]
         t.transform.rotation.w = q[3]
         br.sendTransform(t)
-        """
 
         
