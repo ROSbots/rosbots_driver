@@ -25,8 +25,10 @@
 #     http://www.rosbots.com
 #
 
+from thread import allocate_lock
 import rospy
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, UInt32
+from geometry_msgs.msg import Pose2D
 
 class Robot:
     def __init__(self):
@@ -35,6 +37,10 @@ class Robot:
         # wheelbase of 140mm and wheel diameter of 70mm
         self.wheelbase = rospy.get_param("wheelbase", default=0.14)
         self.wheel_radius = rospy.get_param("wheel_radius", default=0.035)
+
+        # Encoder disk ticks per revolution
+        self.encoder_ticks_per_rev = \
+            rospy.get_param("encoder_ticks_per_rev", default=40)
 
         # Wheel min and max no-load velocities in radians per sec
         self.wheel_speed_min = rospy.get_param("wheel_speed/min", default=3.1)
@@ -60,6 +66,20 @@ class Robot:
         self.pub_power_right.publish(self.cur_wheel_power_right)
         self.pub_power_left.publish(self.cur_wheel_power_left)
 
+        # Subscribe to wheel encoder ticks
+        self.wheel_ticks_right_lock = allocate_lock()
+        self.wheel_ticks_left_lock = allocate_lock()
+        self.sub_wheel_ticks_right = \
+            rospy.Subscriber("/wheel_ticks_right", UInt32, self.wheel_ticks_cb,
+                             (True))
+        self.sub_wheel_ticks_left = \
+            rospy.Subscriber("/wheel_ticks_left", UInt32, self.wheel_ticks_cb,
+                             (False))
+        self._cur_wheel_ticks_right = None
+        self._cur_wheel_ticks_left = None
+
+        # Current robot pose
+        self.pose2D = Pose2D(0.0, 0.0, 0.0)
         
     def shutdown(self):
         rospy.loginfo(rospy.get_caller_id() + " Robot shutdown")
@@ -67,8 +87,30 @@ class Robot:
         self.cur_wheel_power_left.data = 0.0
         self.pub_power_right.publish(self.cur_wheel_power_right)
         self.pub_power_left.publish(self.cur_wheel_power_left)
+
+        
+    def get_wheel_ticks(self):
+        ticks = {}
+        self.wheel_ticks_right_lock.acquire()
+        self.wheel_ticks_left_lock.acquire()
+        ticks["r"] = self._cur_wheel_ticks_right
+        ticks["l"] = self._cur_wheel_ticks_left
+        self.wheel_ticks_right_lock.release()
+        self.wheel_ticks_left_lock.release()
+        return ticks
         
 
+    def wheel_ticks_cb(self, ticks, is_right_wheel):
+        if is_right_wheel:
+            self.wheel_ticks_right_lock.acquire()
+            self._cur_wheel_ticks_right = ticks.data
+            self.wheel_ticks_right_lock.release()
+        else:
+            self.wheel_ticks_left_lock.acquire()
+            self._cur_wheel_ticks_left = ticks.data
+            self.wheel_ticks_left_lock.release()
+            
+            
     def velocity_to_power(self, v):
         av = abs(v)
 
