@@ -73,6 +73,8 @@ class Supervisor:
         self.robot.set_wheel_speed(diff_output["vr"], diff_output["vl"])
 
         self.update_odometry()
+
+        self.publish_pose()
         
     def shutdown_cb(self):
         for ctrl in self.controllers.values():
@@ -129,19 +131,17 @@ class Supervisor:
         new_pose.theta = prev_pose.theta + theta_dt
 
         if True:
-            rospy.loginfo(rospy.get_caller_id() + " prev r ticks: " +
+            rospy.loginfo(rospy.get_caller_id() + " prev l / r ticks: " +
+                          str(self.prev_wheel_ticks["l"]) + " / " +
                           str(self.prev_wheel_ticks["r"]))
-            rospy.loginfo(rospy.get_caller_id() + " prev l ticks: " +
-                          str(self.prev_wheel_ticks["l"]))
-            rospy.loginfo(rospy.get_caller_id() + " r ticks: " +
-                          str(ticks["r"]))
-            rospy.loginfo(rospy.get_caller_id() + " l ticks: " +
-                          str(ticks["l"]))
+            rospy.loginfo(rospy.get_caller_id() + " l / r ticks: " +
+                          str(ticks["l"]) + " / " + str(ticks["r"]))
+            rospy.loginfo(rospy.get_caller_id() +
+                          " meters left / meters right: " +
+                          str(meters_left) + " / " + str(meters_right))
 
-            rospy.loginfo(rospy.get_caller_id() + " x: " +
-                          str(new_pose.x))
-            rospy.loginfo(rospy.get_caller_id() + " y: " +
-                          str(new_pose.y))
+            rospy.loginfo(rospy.get_caller_id() + " x, y: " +
+                          str(new_pose.x) + ", " + str(new_pose.y))
             rospy.loginfo(rospy.get_caller_id() + " theta: " +
                           str(new_pose.theta))
 
@@ -152,16 +152,18 @@ class Supervisor:
         self.prev_wheel_ticks["r"] = ticks["r"]
         self.prev_wheel_ticks["l"] = ticks["l"]
 
+    def publish_pose(self):
         # Broadcast pose as ROS tf
         br = tf2_ros.TransformBroadcaster()
         t = TransformStamped()
         t.header.stamp = rospy.Time.now()
         t.header.frame_id = "world"
         t.child_frame_id = "rosbots_robot"
-        t.transform.translation.x = new_pose.x
-        t.transform.translation.y = new_pose.y
+        t.transform.translation.x = self.robot.pose2D.x
+        t.transform.translation.y = self.robot.pose2D.y
         t.transform.translation.z = 0.0
-        q = tf.transformations.quaternion_from_euler(0, 0, new_pose.theta)
+        q = tf.transformations.quaternion_from_euler(0, 0,
+                                                     self.robot.pose2D.theta)
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]
