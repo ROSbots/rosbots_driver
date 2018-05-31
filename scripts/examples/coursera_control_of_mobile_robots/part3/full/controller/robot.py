@@ -25,6 +25,7 @@
 #     http://www.rosbots.com
 #
 
+import math
 from thread import allocate_lock
 import rospy
 from std_msgs.msg import Float32, UInt32
@@ -41,15 +42,18 @@ class Robot:
         # Encoder disk ticks per revolution
         self.encoder_ticks_per_rev = \
             rospy.get_param("encoder_ticks_per_rev", default=40)
+        self.meters_per_tick = \
+            ((math.pi * 2.0 * self.wheel_radius) /
+             (float)(self.encoder_ticks_per_rev))
 
-        # Wheel min and max no-load velocities in radians per sec
-        self.wheel_speed_min = rospy.get_param("wheel_speed/min", default=3.1)
-        self.wheel_speed_mid = rospy.get_param("wheel_speed/mid", default=4.4)
-        self.wheel_speed_max = rospy.get_param("wheel_speed/max", default=5.48)
+        # Wheel min and max no-load velocities in meters per sec
+        self.wheel_speed_min = rospy.get_param("wheel_speed/min", default=0.0)
+        self.wheel_speed_mid = rospy.get_param("wheel_speed/mid", default=0.1)
+        self.wheel_speed_max = rospy.get_param("wheel_speed/max", default=0.2)
         self.wheel_speed_min_power = \
-            rospy.get_param("wheel_speed/min_power", default=0.5)
+            rospy.get_param("wheel_speed/min_power", default=0.0)
         self.wheel_speed_mid_power = \
-            rospy.get_param("wheel_speed/mid_power", default=0.75)
+            rospy.get_param("wheel_speed/mid_power", default=0.5)
         self.wheel_speed_max_power = \
             rospy.get_param("wheel_speed/max_power", default=1.0)
 
@@ -88,7 +92,7 @@ class Robot:
         # K are the gains.
         self.PID = {"E_k": {"r": 0.0, "l": 0.0},
                     "e_k_1": {"r": 0.0, "l": 0.0},
-                    "Kp": 1.0, "Ki": 0.1, "Kd": 0.1}
+                    "Kp": 1.0, "Ki": 0.01, "Kd": 0.2}
         
     def shutdown(self):
         rospy.loginfo(rospy.get_caller_id() + " Robot shutdown")
@@ -113,18 +117,20 @@ class Robot:
     def wheel_ticks_cb(self, ticks, is_right_wheel):
         if is_right_wheel:
             self.wheel_ticks_right_lock.acquire()
-            self._cur_wheel_tick_ts = rospy.Time.now()
+            self._cur_wheel_ticks_ts = rospy.Time.now()
             self._cur_wheel_ticks_right = ticks.data
             self.wheel_ticks_right_lock.release()
         else:
             self.wheel_ticks_left_lock.acquire()
-            self._cur_wheel_tick_ts = rospy.Time.now()
+            self._cur_wheel_ticks_ts = rospy.Time.now()
             self._cur_wheel_ticks_left = ticks.data
             self.wheel_ticks_left_lock.release()
         
             
             
     def velocity_to_power(self, v):
+        # Clamp the velocity again to max fwd and back
+        v = max(min(v, self.wheel_speed_max), self.wheel_speed_max * -1.0)
         av = abs(v)
 
         a = b = a_pow = b_pow = None
@@ -166,27 +172,50 @@ class Robot:
         vr = max(min(vr, self.wheel_speed_max), self.wheel_speed_max * -1.0)
         vl = max(min(vl, self.wheel_speed_max), self.wheel_speed_max * -1.0)
 
+        cur_ticks = self.get_wheel_ticks()
+        
         # Special stop case
         if vr == 0.0 and vl == 0.0:
             for ddd in ["l", "r"]:
-                # Accumulate error
                 self.PID["E_k"][ddd] = 0.0
                 self.PID["e_k_1"][ddd] = 0.0
                 self._wheel_velocity[ddd] = 0.0
             self.cur_wheel_power_right.data = 0.0
             self.cur_wheel_power_left.data = 0.0
+            self._prev_wheel_ticks["r"] = cur_ticks["r"]
+            self._prev_wheel_ticks["l"] = cur_ticks["l"]
+            self._prev_wheel_ticks["ts"] = cur_ticks["ts"]
         else:
+            # What direction do we want to go in?
+            v_dir = {"l": vl/abs(vl), "r": vr/abs(vr)}
+
+            # If we are changing direction, let's first stop the robot
+            # This is because our encoders can't tell what direction the wheels
+            # are turning
+            if v_dir["l"] * self.cur_wheel_power_left.data < 0.0 or \
+               v_dir["r"] * self.cur_wheel_power_right.data < 0.0:
+                # RECURSION!!!
+                self.set_wheel_speed(0.0, 0.0)
+            
             # Compute velocity of wheels
-            cur_ticks = self.get_wheel_ticks()
             if self._prev_wheel_ticks["r"] != None and \
                self._prev_wheel_ticks["l"] != None and \
                 self._prev_wheel_ticks["ts"] != None:
                 tick_dur = cur_ticks["ts"] - self._prev_wheel_ticks["ts"]
-                inv_sec = 1000000.0 / (float)(tick_dur.nsecs)
+                rospy.loginfo(rospy.get_caller_id() +
+                              " tick_dur: " + \
+                              str(tick_dur))
+                inv_sec = 0.0
+                if tick_dur.nsecs != 0:
+                    inv_sec = 1000000000.0 / (float)(tick_dur.nsecs)
+                rospy.loginfo(rospy.get_caller_id() +
+                              " inv_sec: " + \
+                              str(inv_sec))
                 for ddd in ["l", "r"]:
                     self._wheel_velocity[ddd] = \
                         (float)(cur_ticks[ddd] -
-                                self._prev_wheel_ticks[ddd]) * inv_sec
+                                self._prev_wheel_ticks[ddd]) * \
+                                inv_sec * self.meters_per_tick * v_dir[ddd]
             self._prev_wheel_ticks["r"] = cur_ticks["r"]
             self._prev_wheel_ticks["l"] = cur_ticks["l"]
             self._prev_wheel_ticks["ts"] = cur_ticks["ts"]
@@ -205,6 +234,17 @@ class Robot:
 
                 # Store away previous error
                 self.PID["e_k_1"][ddd] = e_pow[ddd]
+
+            for ddd in ["l", "r"]:
+                vvv = vl
+                if ddd == "r":
+                    vvv = vr
+                rospy.loginfo(rospy.get_caller_id() +
+                              " " + ddd + ", wheel_vel, e_pow, wheel_pow: " +
+                              str(vvv) + ", " +
+                              str(self._wheel_velocity[ddd]) +  ", " +
+                              str(e_pow[ddd]) +  ", " +
+                              str(wheel_pow[ddd]))
         
             # Add to current power settings and then clamp to -1 and 1
             self.cur_wheel_power_right.data = \
@@ -214,16 +254,21 @@ class Robot:
                 max(min(self.cur_wheel_power_left.data +
                         wheel_pow["l"],1.0),-1.0)
         
-            # Publish out
-            if self.cur_wheel_power_right.data != 0.0 or \
-               self.cur_wheel_power_left.data != 0.0:
-                rospy.loginfo(rospy.get_caller_id() +
-                              " right power: " + \
-                              str(self.cur_wheel_power_right) +
-                              " left power: " + \
-                              str(self.cur_wheel_power_left))
-            self.pub_power_right.publish(self.cur_wheel_power_right)
-            self.pub_power_left.publish(self.cur_wheel_power_left)
+        # Publish out
+        if self.cur_wheel_power_right.data != 0.0 or \
+           self.cur_wheel_power_left.data != 0.0:
+            rospy.loginfo(rospy.get_caller_id() +
+                          " left velocity: " + \
+                          str(self._wheel_velocity["l"]) +
+                          " right velocity: " + \
+                          str(self._wheel_velocity["r"]))
+            rospy.loginfo(rospy.get_caller_id() +
+                          " left power: " + \
+                          str(self.cur_wheel_power_left) +
+                          " right power: " + \
+                          str(self.cur_wheel_power_right))
+        self.pub_power_right.publish(self.cur_wheel_power_right)
+        self.pub_power_left.publish(self.cur_wheel_power_left)
 
         
 
