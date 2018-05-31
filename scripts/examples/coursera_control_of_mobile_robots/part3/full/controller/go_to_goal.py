@@ -26,20 +26,28 @@
 #
 
 import rospy
+from geometry_msgs.msg import Twist
 
-from controller.supervisor import Supervisor
-    
-def main():
-    rospy.init_node('rosbots_robot', anonymous=False)
-    
-    supervisor = Supervisor()
-    
-    rate = rospy.Rate(2)
+from controller import Controller
 
-    while not rospy.is_shutdown():
-        supervisor.execute()
-        rate.sleep()
+class GoToGoal(Controller):
+    def __init__(self):
+        rospy.loginfo(rospy.get_caller_id() + " GoToGoal initialized")
 
+        self.v = 0
+        self.w = 0
 
-if __name__ == '__main__':
-    main()
+    def execute(self):
+        #rospy.loginfo(rospy.get_caller_id() + " RCTeleop execute")
+        output = {"v": self.v, "w": self.w}
+        return output
+
+    def shutdown(self):
+        rospy.loginfo(rospy.get_caller_id() + " RCTeleop shutdown")
+
+    def twist_cb(self, data):
+        rospy.loginfo(rospy.get_caller_id() + \
+                      ": Linear.x: %f -- Angular.z: %f", \
+                      data.linear.x, data.angular.z)
+        self.v = data.linear.x
+        self.w = data.angular.z

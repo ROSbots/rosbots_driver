@@ -51,18 +51,24 @@ volatile unsigned long ldebounce=0;
 
 void lspeed() {
     // N microseconds since last interrupt
-    if( micros() - ldebounce > DEBOUNCE_MS ){ 
-        ldebounce = micros();
+    unsigned long m = micros();
+    if( m - ldebounce > DEBOUNCE_MS ){ 
         lwheel = lwheel + 1;
     }
+    // We assume real signal is less than debounce ms
+    // so always update the last bounce time
+    ldebounce = m;
 }
 
 void rspeed() {
     // N microseconds since last interrupt
-    if( micros() - rdebounce > DEBOUNCE_MS ){
-        rdebounce = micros();
+    unsigned long m = micros();
+    if( m - rdebounce > DEBOUNCE_MS ){
         rwheel = rwheel + 1;
     }
+    // We assume real signal is less than debounce ms
+    // so always update the last bounce time
+    rdebounce = m;
 }
 
 std_msgs::UInt32 rticks_msg;

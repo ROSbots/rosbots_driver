@@ -39,6 +39,8 @@ class Supervisor:
     def __init__(self):
         rospy.on_shutdown(self.shutdown_cb)
 
+        self.robot_name = rospy.get_name()
+
         self.controllers = {"rc": RCTeleop()}
         self.current_state = "rc"
         self.current_controller = self.controllers[self.current_state]
@@ -51,6 +53,9 @@ class Supervisor:
         self.dd = DifferentialDrive(self.robot.wheelbase,
                                     self.robot.wheel_radius)
 
+        # Initialize TF Broadcaster
+        self.br = tf2_ros.TransformBroadcaster()
+
         # Initialize previous wheel encoder ticks
         self.prev_wheel_ticks = None
 
@@ -62,11 +67,11 @@ class Supervisor:
         diff_output = self.dd.uni_to_diff(ctrl_output["v"], ctrl_output["w"])
 
         if ctrl_output["v"] != 0.0 or ctrl_output["w"] != 0.0:
-            rospy.loginfo(rospy.get_caller_id() + " v: " +
-                          str(ctrl_output["v"]) +
+            rospy.loginfo(rospy.get_caller_id() +
+                          " v: " + str(ctrl_output["v"]) +
                           " w: " + str(ctrl_output["w"]))
-            rospy.loginfo(rospy.get_caller_id() + " vl: " +
-                          str(diff_output["vl"]) +
+            rospy.loginfo(rospy.get_caller_id() +
+                          " vl: " + str(diff_output["vl"]) +
                           " vr: " + str(diff_output["vr"]))
         
         # Set the wheel speeds
@@ -93,10 +98,8 @@ class Supervisor:
         # Robot may not start with encoder count at zero
         if self.prev_wheel_ticks == None:
             self.prev_wheel_ticks = {"r": ticks["r"], "l": ticks["l"]}
-            rospy.loginfo(rospy.get_caller_id() + " initial r ticks: " +
-                          str(ticks["r"]))
-            rospy.loginfo(rospy.get_caller_id() + " initial l ticks: " +
-                          str(ticks["l"]))
+            rospy.loginfo(rospy.get_caller_id() + " initial l / r  ticks: " +
+                          str(ticks["l"]) + " / " + str(ticks["r"]))
             
         
         # If ticks are the same since last time, then no need to update either
@@ -130,7 +133,7 @@ class Supervisor:
         new_pose.y = prev_pose.y + y_dt
         new_pose.theta = prev_pose.theta + theta_dt
 
-        if True:
+        if False:
             rospy.loginfo(rospy.get_caller_id() + " prev l / r ticks: " +
                           str(self.prev_wheel_ticks["l"]) + " / " +
                           str(self.prev_wheel_ticks["r"]))
@@ -154,11 +157,10 @@ class Supervisor:
 
     def publish_pose(self):
         # Broadcast pose as ROS tf
-        br = tf2_ros.TransformBroadcaster()
         t = TransformStamped()
-        t.header.stamp = rospy.Time.now()
         t.header.frame_id = "world"
-        t.child_frame_id = "rosbots_robot"
+        t.child_frame_id = self.robot_name
+        t.header.stamp = rospy.Time.now()
         t.transform.translation.x = self.robot.pose2D.x
         t.transform.translation.y = self.robot.pose2D.y
         t.transform.translation.z = 0.0
@@ -168,6 +170,6 @@ class Supervisor:
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]
         t.transform.rotation.w = q[3]
-        br.sendTransform(t)
+        self.br.sendTransform(t)
 
         

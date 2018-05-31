@@ -77,9 +77,18 @@ class Robot:
                              (False))
         self._cur_wheel_ticks_right = None
         self._cur_wheel_ticks_left = None
+        self._cur_wheel_ticks_ts = None
+        self._prev_wheel_ticks = {"r" : None, "l" : None, "ts": None}
+        self._wheel_velocity = {"r": 0.0, "l": 0.0}
 
         # Current robot pose
         self.pose2D = Pose2D(0.0, 0.0, 0.0)
+
+        # PID variables - E_k is accumulated error, e_k_1 is previous error,
+        # K are the gains.
+        self.PID = {"E_k": {"r": 0.0, "l": 0.0},
+                    "e_k_1": {"r": 0.0, "l": 0.0},
+                    "Kp": 1.0, "Ki": 0.1, "Kd": 0.1}
         
     def shutdown(self):
         rospy.loginfo(rospy.get_caller_id() + " Robot shutdown")
@@ -95,6 +104,7 @@ class Robot:
         self.wheel_ticks_left_lock.acquire()
         ticks["r"] = self._cur_wheel_ticks_right
         ticks["l"] = self._cur_wheel_ticks_left
+        ticks["ts"] = self._cur_wheel_ticks_ts
         self.wheel_ticks_right_lock.release()
         self.wheel_ticks_left_lock.release()
         return ticks
@@ -103,27 +113,25 @@ class Robot:
     def wheel_ticks_cb(self, ticks, is_right_wheel):
         if is_right_wheel:
             self.wheel_ticks_right_lock.acquire()
+            self._cur_wheel_tick_ts = rospy.Time.now()
             self._cur_wheel_ticks_right = ticks.data
             self.wheel_ticks_right_lock.release()
         else:
             self.wheel_ticks_left_lock.acquire()
+            self._cur_wheel_tick_ts = rospy.Time.now()
             self._cur_wheel_ticks_left = ticks.data
             self.wheel_ticks_left_lock.release()
+        
             
             
     def velocity_to_power(self, v):
         av = abs(v)
 
-        # If velocity is below minimum velocity turnable by PWM, then
-        # just set to zero since the wheels won't spin anyway
-        if av < self.wheel_speed_min:
-            return 0.0
-
         a = b = a_pow = b_pow = None
         nnn = None
-        if av >= self.wheel_speed_min and av < self.wheel_speed_mid:
-            a = self.wheel_speed_min
-            a_pow = self.wheel_speed_min_power
+        if av >= 0.0 and av < self.wheel_speed_mid:
+            a = 0.0
+            a_pow = 0.0
             b = self.wheel_speed_mid
             b_pow = self.wheel_speed_mid_power
         elif av >= self.wheel_speed_mid and av <= self.wheel_speed_max:
@@ -158,23 +166,66 @@ class Robot:
         vr = max(min(vr, self.wheel_speed_max), self.wheel_speed_max * -1.0)
         vl = max(min(vl, self.wheel_speed_max), self.wheel_speed_max * -1.0)
 
-        # Convert to power norms
-        self.cur_wheel_power_right.data = self.velocity_to_power(vr)
-        self.cur_wheel_power_left.data = self.velocity_to_power(vl)
+        # Special stop case
+        if vr == 0.0 and vl == 0.0:
+            for ddd in ["l", "r"]:
+                # Accumulate error
+                self.PID["E_k"][ddd] = 0.0
+                self.PID["e_k_1"][ddd] = 0.0
+                self._wheel_velocity[ddd] = 0.0
+            self.cur_wheel_power_right.data = 0.0
+            self.cur_wheel_power_left.data = 0.0
+        else:
+            # Compute velocity of wheels
+            cur_ticks = self.get_wheel_ticks()
+            if self._prev_wheel_ticks["r"] != None and \
+               self._prev_wheel_ticks["l"] != None and \
+                self._prev_wheel_ticks["ts"] != None:
+                tick_dur = cur_ticks["ts"] - self._prev_wheel_ticks["ts"]
+                inv_sec = 1000000.0 / (float)(tick_dur.nsecs)
+                for ddd in ["l", "r"]:
+                    self._wheel_velocity[ddd] = \
+                        (float)(cur_ticks[ddd] -
+                                self._prev_wheel_ticks[ddd]) * inv_sec
+            self._prev_wheel_ticks["r"] = cur_ticks["r"]
+            self._prev_wheel_ticks["l"] = cur_ticks["l"]
+            self._prev_wheel_ticks["ts"] = cur_ticks["ts"]
 
-        # Publish out
-        if self.cur_wheel_power_right.data != 0.0 or \
-           self.cur_wheel_power_left.data != 0.0:
-            rospy.loginfo(rospy.get_caller_id() +
-                          " right power: " + str(self.cur_wheel_power_right) +
-                          " left power: " + str(self.cur_wheel_power_left))
-        self.pub_power_right.publish(self.cur_wheel_power_right)
-        self.pub_power_left.publish(self.cur_wheel_power_left)
+            # PID the 2 wheel velocities
+            wheel_pow = {"r": 0.0, "l": 0.0}
+            e_pow = {"r": 0.0, "l": 0.0}
+            e_pow["r"] = self.velocity_to_power(vr - self._wheel_velocity["r"])
+            e_pow["l"] = self.velocity_to_power(vl - self._wheel_velocity["l"])
+            for ddd in ["l", "r"]:
+                # Accumulate error
+                self.PID["E_k"][ddd] += e_pow[ddd]
+                wheel_pow[ddd] = self.PID["Kp"] * e_pow[ddd] + \
+                        self.PID["Ki"] * self.PID["E_k"][ddd] + \
+                        self.PID["Kd"] * (e_pow[ddd] - self.PID["e_k_1"][ddd])
+
+                # Store away previous error
+                self.PID["e_k_1"][ddd] = e_pow[ddd]
         
-    def get_encoder_ticks(self):
-        ticks = { "r": 0, "l": 0 }
+            # Add to current power settings and then clamp to -1 and 1
+            self.cur_wheel_power_right.data = \
+                max(min(self.cur_wheel_power_right.data +
+                        wheel_pow["r"],1.0),-1.0)
+            self.cur_wheel_power_left.data =  \
+                max(min(self.cur_wheel_power_left.data +
+                        wheel_pow["l"],1.0),-1.0)
+        
+            # Publish out
+            if self.cur_wheel_power_right.data != 0.0 or \
+               self.cur_wheel_power_left.data != 0.0:
+                rospy.loginfo(rospy.get_caller_id() +
+                              " right power: " + \
+                              str(self.cur_wheel_power_right) +
+                              " left power: " + \
+                              str(self.cur_wheel_power_left))
+            self.pub_power_right.publish(self.cur_wheel_power_right)
+            self.pub_power_left.publish(self.cur_wheel_power_left)
 
-        return ticks
+        
 
     
         

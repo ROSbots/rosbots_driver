@@ -37,7 +37,7 @@ class DifferentialDrive:
 
     def uni_to_diff(self, v, w):
         '''
-        Return mm per sec wheel velocities
+        Return meters per sec wheel velocities 
         '''
 
         # In meters per radian
@@ -48,8 +48,13 @@ class DifferentialDrive:
         # v - m/s
         # L - wheelbase - meter/radian
         # R - wheel radius - meter/radian
-        vr = ((2.0 * v) + (w * L)) / (2.0 * R)
-        vl = ((2.0 * v) + (-1.0 * w * L)) / (2.0 * R)
+        # vr_rad - radians/sec - ie 6.28 == 1 rotation per sec
+        vr_rad = ((2.0 * v) + (w * L)) / (2.0 * R)
+        vl_rad = ((2.0 * v) + (-1.0 * w * L)) / (2.0 * R)
+
+        # (r/s * 2piR) / 2pi == meters per sec rotational speed
+        vr = vr_rad * R
+        vl = vl_rad * R
 
         # In m per sec
         return {"vl": vl, "vr": vr}
