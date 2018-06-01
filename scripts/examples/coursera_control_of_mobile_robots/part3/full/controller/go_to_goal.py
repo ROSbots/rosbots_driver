@@ -25,29 +25,80 @@
 #     http://www.rosbots.com
 #
 
+import math
 import rospy
-from geometry_msgs.msg import Twist
 
 from controller import Controller
 
 class GoToGoal(Controller):
-    def __init__(self):
+    def __init__(self, robot):
         rospy.loginfo(rospy.get_caller_id() + " GoToGoal initialized")
 
-        self.v = 0
-        self.w = 0
+        # Goal location
+        self.goal = {"x": 0.5, "y": -0.3}
+
+        self.robot = robot
+
+    def at_goal(self):
+        pose2D = self.robot.get_pose2D()
+
+        # Distance to goal
+        u_x = self.goal["x"] - pose2D.x
+        u_y = self.goal["y"] - pose2D.y
+        d2_g = (u_x * u_x) + (u_y * u_y)
+
+        # Are close to goal?
+        d2_at_goal = (0.05*0.05)
+        
+        if d2_g < d2_at_goal:
+            return True
+        return False
+        
 
     def execute(self):
-        #rospy.loginfo(rospy.get_caller_id() + " RCTeleop execute")
-        output = {"v": self.v, "w": self.w}
+        output = {"v": 0, "w": 0}
+        
+        # Get robot pose
+        pose2D = self.robot.get_pose2D()
+
+        # Distance to goal
+        u_x = self.goal["x"] - pose2D.x
+        u_y = self.goal["y"] - pose2D.y
+        d2_g = (u_x * u_x) + (u_y * u_y)
+
+        # Are close to goal?
+        d2_at_goal = (0.05*0.05)
+        d2_far_away = (0.2*0.2) # 20cm
+        if d2_g < d2_at_goal:
+            return output
+        elif d2_g >= d2_far_away:
+            output["v"] = 0.22
+        else:
+            # Not far, but not at goal
+            output["v"] = 0.12
+
+        # Compute angle to goal
+        theta_g = math.atan2(u_y, u_x)
+
+        # Difference between angle to goal and current heading
+        theta_diff = theta_g - pose2D.theta
+
+        rospy.loginfo(rospy.get_caller_id() +
+                      " theta_g, diff, pose_theta: " +
+                      str(math.degrees(theta_g)) + ", " +
+                      str(math.degrees(theta_diff)) + ", " +
+                      str(math.degrees(pose2D.theta)))
+
+        # If angle is large, then we turn. Else we go straight
+        theta_large = math.radians(5) # 5 degrees
+        if abs(theta_diff) >= theta_large:
+            output["v"] = 0.0
+            output["w"] = theta_diff * 0.25
+        else:
+            # Angle is little, just go straight
+            pass
+        
         return output
 
     def shutdown(self):
-        rospy.loginfo(rospy.get_caller_id() + " RCTeleop shutdown")
-
-    def twist_cb(self, data):
-        rospy.loginfo(rospy.get_caller_id() + \
-                      ": Linear.x: %f -- Angular.z: %f", \
-                      data.linear.x, data.angular.z)
-        self.v = data.linear.x
-        self.w = data.angular.z
+        rospy.loginfo(rospy.get_caller_id() + " GoToGoal shutdown")

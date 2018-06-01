@@ -101,6 +101,13 @@ class Robot:
         self.pub_power_right.publish(self.cur_wheel_power_right)
         self.pub_power_left.publish(self.cur_wheel_power_left)
 
+    def get_pose2D(self):
+        return self.pose2D
+
+    def set_pose2D(self, pose2D):
+        self.pose2D.x = pose2D.x
+        self.pose2D.y = pose2D.y
+        self.pose2D.theta = pose2D.theta
         
     def get_wheel_ticks(self):
         ticks = {}

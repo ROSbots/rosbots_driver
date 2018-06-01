@@ -33,6 +33,8 @@ from geometry_msgs.msg import Pose2D, TransformStamped
 
 from robot import Robot
 from rc_teleop import RCTeleop
+from go_to_goal import GoToGoal
+from stop import Stop
 from dynamics.differential_drive import DifferentialDrive
 
 class Supervisor:
@@ -40,15 +42,12 @@ class Supervisor:
         rospy.on_shutdown(self.shutdown_cb)
 
         self.robot_name = rospy.get_name()
-
-        self.controllers = {"rc": RCTeleop()}
-        self.current_state = "rc"
-        self.current_controller = self.controllers[self.current_state]
-
         self.robot = Robot()
-        rospy.loginfo(rospy.get_caller_id() +
-                      " wheelbase: " + str(self.robot.wheelbase) +
-                      " wheel radius: " + str(self.robot.wheel_radius))
+        
+        self.controllers = {"rc": RCTeleop(),
+                            "gtg": GoToGoal(self.robot),
+                            "stop": Stop()}
+        self.switch_to_state("gtg")
         
         self.dd = DifferentialDrive(self.robot.wheelbase,
                                     self.robot.wheel_radius)
@@ -59,7 +58,15 @@ class Supervisor:
         # Initialize previous wheel encoder ticks
         self.prev_wheel_ticks = None
 
+    def switch_to_state(self, state):
+        self.current_state = state
+        self.current_controller = self.controllers[self.current_state]
+
     def execute(self):
+        # Check events
+        if self.current_state == "gtg" and self.current_controller.at_goal():
+            self.switch_to_state("stop")
+                        
         # Get commands in unicycle model
         ctrl_output = self.current_controller.execute()
 
@@ -82,6 +89,9 @@ class Supervisor:
         self.publish_pose()
         
     def shutdown_cb(self):
+        rospy.loginfo(rospy.get_caller_id() +
+                      " current controller: " + self.current_state)
+        
         for ctrl in self.controllers.values():
             ctrl.shutdown()
 
@@ -108,7 +118,7 @@ class Supervisor:
             return
 
         # Get current pose from robot
-        prev_pose = self.robot.pose2D
+        prev_pose = self.robot.get_pose2D()
 
         # Compute odometry - kinematics in meters
         R = self.robot.wheel_radius;
@@ -149,7 +159,7 @@ class Supervisor:
                           str(new_pose.theta))
 
         # Update robot with new pose
-        self.robot.pose2D = new_pose
+        self.robot.set_pose2D(new_pose)
 
         # Update the tick count
         self.prev_wheel_ticks["r"] = ticks["r"]
@@ -157,15 +167,15 @@ class Supervisor:
 
     def publish_pose(self):
         # Broadcast pose as ROS tf
+        ppp = self.robot.get_pose2D()
         t = TransformStamped()
         t.header.frame_id = "world"
         t.child_frame_id = self.robot_name
         t.header.stamp = rospy.Time.now()
-        t.transform.translation.x = self.robot.pose2D.x
-        t.transform.translation.y = self.robot.pose2D.y
+        t.transform.translation.x = ppp.x
+        t.transform.translation.y = ppp.y
         t.transform.translation.z = 0.0
-        q = tf.transformations.quaternion_from_euler(0, 0,
-                                                     self.robot.pose2D.theta)
+        q = tf.transformations.quaternion_from_euler(0, 0, ppp.theta)
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]
