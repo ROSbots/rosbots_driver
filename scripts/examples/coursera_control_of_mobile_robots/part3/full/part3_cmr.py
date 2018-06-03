@@ -34,7 +34,7 @@ def main():
     
     supervisor = Supervisor()
     
-    rate = rospy.Rate(2)
+    rate = rospy.Rate(4)
 
     while not rospy.is_shutdown():
         supervisor.execute()

@@ -91,6 +91,7 @@ class Supervisor:
     def shutdown_cb(self):
         rospy.loginfo(rospy.get_caller_id() +
                       " current controller: " + self.current_state)
+        self.switch_to_state("stop")
         
         for ctrl in self.controllers.values():
             ctrl.shutdown()
@@ -127,10 +128,13 @@ class Supervisor:
         meters_per_tick = (2.0 * math.pi * R) / ticks_per_rev
 
         # How far did each wheel move
+        wheel_dir = self.robot.get_wheel_dir()
         meters_right = \
-            meters_per_tick * (ticks["r"] - self.prev_wheel_ticks["r"])
+            meters_per_tick * (ticks["r"] - self.prev_wheel_ticks["r"]) * \
+            wheel_dir["r"]
         meters_left = \
-            meters_per_tick * (ticks["l"] - self.prev_wheel_ticks["l"])
+            meters_per_tick * (ticks["l"] - self.prev_wheel_ticks["l"]) * \
+            wheel_dir["l"]
         meters_center = (meters_right + meters_left) * 0.5
 
         # Compute new pose
@@ -143,7 +147,7 @@ class Supervisor:
         new_pose.y = prev_pose.y + y_dt
         new_pose.theta = prev_pose.theta + theta_dt
 
-        if False:
+        if True:
             rospy.loginfo(rospy.get_caller_id() + " prev l / r ticks: " +
                           str(self.prev_wheel_ticks["l"]) + " / " +
                           str(self.prev_wheel_ticks["r"]))
@@ -155,8 +159,8 @@ class Supervisor:
 
             rospy.loginfo(rospy.get_caller_id() + " x, y: " +
                           str(new_pose.x) + ", " + str(new_pose.y))
-            rospy.loginfo(rospy.get_caller_id() + " theta: " +
-                          str(new_pose.theta))
+            rospy.loginfo(rospy.get_caller_id() + " theta (deg): " +
+                          str(math.degrees(new_pose.theta)))
 
         # Update robot with new pose
         self.robot.set_pose2D(new_pose)

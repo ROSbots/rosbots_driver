@@ -92,14 +92,18 @@ class Robot:
         # K are the gains.
         self.PID = {"E_k": {"r": 0.0, "l": 0.0},
                     "e_k_1": {"r": 0.0, "l": 0.0},
-                    "Kp": 1.0, "Ki": 0.01, "Kd": 0.2}
+                    "Kp": 1.0, "Ki": 0.1, "Kd": 0.2}
         
     def shutdown(self):
         rospy.loginfo(rospy.get_caller_id() + " Robot shutdown")
-        self.cur_wheel_power_right.data = 0.0
-        self.cur_wheel_power_left.data = 0.0
-        self.pub_power_right.publish(self.cur_wheel_power_right)
-        self.pub_power_left.publish(self.cur_wheel_power_left)
+
+        # Send stop command twice just in case
+        for i in range(2):
+            self.cur_wheel_power_right.data = 0.0
+            self.cur_wheel_power_left.data = 0.0
+            self.pub_power_right.publish(self.cur_wheel_power_right)
+            self.pub_power_left.publish(self.cur_wheel_power_left)
+            rospy.sleep(0.2)
 
     def get_pose2D(self):
         return self.pose2D
@@ -119,7 +123,16 @@ class Robot:
         self.wheel_ticks_right_lock.release()
         self.wheel_ticks_left_lock.release()
         return ticks
-        
+
+    def get_wheel_dir(self):
+        wheel_dir = {"r": 1.0, "l": 1.0}
+        if self.cur_wheel_power_left.data < 0.0:
+            wheel_dir["l"] = -1.0
+
+        if self.cur_wheel_power_right.data < 0.0:
+            wheel_dir["r"] = -1.0
+
+        return wheel_dir
 
     def wheel_ticks_cb(self, ticks, is_right_wheel):
         if is_right_wheel:
@@ -194,15 +207,22 @@ class Robot:
             self._prev_wheel_ticks["ts"] = cur_ticks["ts"]
         else:
             # What direction do we want to go in?
-            v_dir = {"l": vl/abs(vl), "r": vr/abs(vr)}
+            v_dir = {"l": 1.0, "r": 1.0} 
+            for ddd in ["l", "r"]:
+                if (vl < 0.0 and ddd == "l") or \
+                   (vr < 0.0 and ddd == "r"):
+                    v_dir[ddd] = -1.0
 
             # If we are changing direction, let's first stop the robot
             # This is because our encoders can't tell what direction the wheels
             # are turning
-            if v_dir["l"] * self.cur_wheel_power_left.data < 0.0 or \
-               v_dir["r"] * self.cur_wheel_power_right.data < 0.0:
-                # RECURSION!!!
-                self.set_wheel_speed(0.0, 0.0)
+            #if v_dir["l"] * self.cur_wheel_power_left.data < 0.0 or \
+            #   v_dir["r"] * self.cur_wheel_power_right.data < 0.0:
+            #    # RECURSION!!!
+            #    self.set_wheel_speed(0.0, 0.0)
+
+            # Get actual direction motors are turning in
+            motor_dir = self.get_wheel_dir()
             
             # Compute velocity of wheels
             if self._prev_wheel_ticks["r"] != None and \
@@ -222,20 +242,20 @@ class Robot:
                     self._wheel_velocity[ddd] = \
                         (float)(cur_ticks[ddd] -
                                 self._prev_wheel_ticks[ddd]) * \
-                                inv_sec * self.meters_per_tick * v_dir[ddd]
+                                inv_sec * self.meters_per_tick * motor_dir[ddd]
             self._prev_wheel_ticks["r"] = cur_ticks["r"]
             self._prev_wheel_ticks["l"] = cur_ticks["l"]
             self._prev_wheel_ticks["ts"] = cur_ticks["ts"]
 
             # PID the 2 wheel velocities
-            wheel_pow = {"r": 0.0, "l": 0.0}
+            e_wheel_pow_final = {"r": 0.0, "l": 0.0}
             e_pow = {"r": 0.0, "l": 0.0}
             e_pow["r"] = self.velocity_to_power(vr - self._wheel_velocity["r"])
             e_pow["l"] = self.velocity_to_power(vl - self._wheel_velocity["l"])
             for ddd in ["l", "r"]:
                 # Accumulate error
                 self.PID["E_k"][ddd] += e_pow[ddd]
-                wheel_pow[ddd] = self.PID["Kp"] * e_pow[ddd] + \
+                e_wheel_pow_final[ddd] = self.PID["Kp"] * e_pow[ddd] + \
                         self.PID["Ki"] * self.PID["E_k"][ddd] + \
                         self.PID["Kd"] * (e_pow[ddd] - self.PID["e_k_1"][ddd])
 
@@ -247,19 +267,20 @@ class Robot:
                 if ddd == "r":
                     vvv = vr
                 rospy.loginfo(rospy.get_caller_id() +
-                              " " + ddd + ", wheel_vel, e_pow, wheel_pow: " +
+                              " " + ddd + ", wheel_vel, e_pow, e_wheel_pow_final: " +
                               str(vvv) + ", " +
                               str(self._wheel_velocity[ddd]) +  ", " +
                               str(e_pow[ddd]) +  ", " +
-                              str(wheel_pow[ddd]))
+                              str(e_wheel_pow_final[ddd]))
         
             # Add to current power settings and then clamp to -1 and 1
+            # TTD: Only clamp to forward rotation for now!
             self.cur_wheel_power_right.data = \
                 max(min(self.cur_wheel_power_right.data +
-                        wheel_pow["r"],1.0),-1.0)
+                        e_wheel_pow_final["r"],1.0),0.0) #-1.0)
             self.cur_wheel_power_left.data =  \
                 max(min(self.cur_wheel_power_left.data +
-                        wheel_pow["l"],1.0),-1.0)
+                        e_wheel_pow_final["l"],1.0),0.0) #-1.0)
         
         # Publish out
         if self.cur_wheel_power_right.data != 0.0 or \
@@ -276,10 +297,5 @@ class Robot:
                           str(self.cur_wheel_power_right))
         self.pub_power_right.publish(self.cur_wheel_power_right)
         self.pub_power_left.publish(self.cur_wheel_power_left)
-
-        
-
-    
-        
 
         

@@ -48,7 +48,8 @@ class GoToGoal(Controller):
         d2_g = (u_x * u_x) + (u_y * u_y)
 
         # Are close to goal?
-        d2_at_goal = (0.05*0.05)
+        close_to_goal = 0.05 
+        d2_at_goal = (close_to_goal**2)
         
         if d2_g < d2_at_goal:
             return True
@@ -67,8 +68,8 @@ class GoToGoal(Controller):
         d2_g = (u_x * u_x) + (u_y * u_y)
 
         # Are close to goal?
-        d2_at_goal = (0.05*0.05)
-        d2_far_away = (0.2*0.2) # 20cm
+        d2_at_goal = (0.05**2)
+        d2_far_away = (0.2**2) # 20cm
         if d2_g < d2_at_goal:
             return output
         elif d2_g >= d2_far_away:
@@ -90,10 +91,10 @@ class GoToGoal(Controller):
                       str(math.degrees(pose2D.theta)))
 
         # If angle is large, then we turn. Else we go straight
-        theta_large = math.radians(5) # 5 degrees
+        theta_large = math.radians(15) # X degrees
         if abs(theta_diff) >= theta_large:
             output["v"] = 0.0
-            output["w"] = theta_diff * 0.25
+            output["w"] = theta_diff * 0.5
         else:
             # Angle is little, just go straight
             pass
