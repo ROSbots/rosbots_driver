@@ -37,11 +37,11 @@ class GoToGoal(Controller):
         rospy.loginfo(rospy.get_caller_id() + " GoToGoal initialized")
 
         # Goal location
-        self.goal = {"x": -0.5, "y": -0.0}
+        self.goal = {"x": 0.3, "y": 0.5}
 
         # PID controllers
-        self.PID = {"v": PID(0.5, 0.05, 0.2),
-                    "w": PID(0.5, 0.05, 0.2)}
+        self.PID = {"v": PID(0.5, 0.0, 0.1),
+                    "w": PID(0.5, 0.0, 0.1)}
 
         self.robot = robot
 
@@ -82,10 +82,10 @@ class GoToGoal(Controller):
             self.PID["w"].reset()
             return output
         elif d2_g >= d2_far_away:
-            output["v"] = 0.22
+            output["v"] = self.PID["v"].output(math.sqrt(d2_g))
         else:
             # Not far, but not at goal
-            output["v"] = 0.12
+            output["v"] = self.PID["v"].output(math.sqrt(d2_g))
 
         # Compute angle to goal
         theta_g = math.atan2(u_y, u_x)
@@ -97,6 +97,10 @@ class GoToGoal(Controller):
         theta_diff = math.atan2(d_y, d_x)
 
         rospy.loginfo(rospy.get_caller_id() +
+                      " u_y, u_x, theta_g: " +
+                      str(u_y) + ", " + str(u_x) + ", " + str(theta_g))
+
+        rospy.loginfo(rospy.get_caller_id() +
                       " theta_g, diff, pose_theta: " +
                       str(math.degrees(theta_g)) + ", " +
                       str(math.degrees(theta_diff)) + ", " +
@@ -105,11 +109,12 @@ class GoToGoal(Controller):
         # If angle is large, then we turn. Else we go straight
         theta_large = math.radians(15) # X degrees
         if abs(theta_diff) >= theta_large:
+            self.PID["v"].reset()
             output["v"] = 0.0
             output["w"] = self.PID["w"].output(theta_diff)
         else:
             # Angle is little, just go straight
-            pass
+            self.PID["w"].reset()
         
         return output
 

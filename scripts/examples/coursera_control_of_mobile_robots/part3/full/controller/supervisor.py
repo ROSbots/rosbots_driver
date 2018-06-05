@@ -146,7 +146,7 @@ class Supervisor:
         new_pose.x = prev_pose.x + x_dt
         new_pose.y = prev_pose.y + y_dt
         theta_tmp = prev_pose.theta + theta_dt
-        new_pose.theta = math.atan2( math.cos(theta_tmp), math.sin(theta_tmp) )
+        new_pose.theta = math.atan2( math.sin(theta_tmp), math.cos(theta_tmp) )
 
         if True:
             rospy.loginfo(rospy.get_caller_id() + " prev l / r ticks: " +
@@ -160,7 +160,10 @@ class Supervisor:
 
             rospy.loginfo(rospy.get_caller_id() + " x, y: " +
                           str(new_pose.x) + ", " + str(new_pose.y))
-            rospy.loginfo(rospy.get_caller_id() + " theta (deg): " +
+            rospy.loginfo(rospy.get_caller_id() +
+                          " prev theta, theta_dt, new theta (deg): " +
+                          str(math.degrees(prev_pose.theta)) + ", " +
+                          str(math.degrees(theta_dt)) + ", " +
                           str(math.degrees(new_pose.theta)))
 
         # Update robot with new pose
