@@ -30,12 +30,18 @@ import rospy
 
 from controller import Controller
 
+from dynamics.pid import PID
+
 class GoToGoal(Controller):
     def __init__(self, robot):
         rospy.loginfo(rospy.get_caller_id() + " GoToGoal initialized")
 
         # Goal location
-        self.goal = {"x": 0.5, "y": -0.3}
+        self.goal = {"x": -0.5, "y": -0.0}
+
+        # PID controllers
+        self.PID = {"v": PID(0.5, 0.05, 0.2),
+                    "w": PID(0.5, 0.05, 0.2)}
 
         self.robot = robot
 
@@ -71,6 +77,9 @@ class GoToGoal(Controller):
         d2_at_goal = (0.05**2)
         d2_far_away = (0.2**2) # 20cm
         if d2_g < d2_at_goal:
+            # At the goal
+            self.PID["v"].reset()
+            self.PID["w"].reset()
             return output
         elif d2_g >= d2_far_away:
             output["v"] = 0.22
@@ -83,6 +92,9 @@ class GoToGoal(Controller):
 
         # Difference between angle to goal and current heading
         theta_diff = theta_g - pose2D.theta
+        d_y = math.sin(theta_diff)
+        d_x = math.cos(theta_diff)
+        theta_diff = math.atan2(d_y, d_x)
 
         rospy.loginfo(rospy.get_caller_id() +
                       " theta_g, diff, pose_theta: " +
@@ -94,7 +106,7 @@ class GoToGoal(Controller):
         theta_large = math.radians(15) # X degrees
         if abs(theta_diff) >= theta_large:
             output["v"] = 0.0
-            output["w"] = theta_diff * 0.5
+            output["w"] = self.PID["w"].output(theta_diff)
         else:
             # Angle is little, just go straight
             pass

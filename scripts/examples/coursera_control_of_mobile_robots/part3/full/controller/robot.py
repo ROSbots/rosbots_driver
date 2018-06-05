@@ -31,6 +31,8 @@ import rospy
 from std_msgs.msg import Float32, UInt32
 from geometry_msgs.msg import Pose2D
 
+from dynamics.pid import PID
+
 class Robot:
     def __init__(self):
         # Diff drive robot attributes can be stored in parameter server
@@ -90,9 +92,8 @@ class Robot:
 
         # PID variables - E_k is accumulated error, e_k_1 is previous error,
         # K are the gains.
-        self.PID = {"E_k": {"r": 0.0, "l": 0.0},
-                    "e_k_1": {"r": 0.0, "l": 0.0},
-                    "Kp": 1.0, "Ki": 0.1, "Kd": 0.2}
+        self.PID = {"l": PID(1.0, 0.1, 0.2),
+                    "r": PID(1.0, 0.1, 0.2)}
         
     def shutdown(self):
         rospy.loginfo(rospy.get_caller_id() + " Robot shutdown")
@@ -197,8 +198,7 @@ class Robot:
         # Special stop case
         if vr == 0.0 and vl == 0.0:
             for ddd in ["l", "r"]:
-                self.PID["E_k"][ddd] = 0.0
-                self.PID["e_k_1"][ddd] = 0.0
+                self.PID["l"].reset()
                 self._wheel_velocity[ddd] = 0.0
             self.cur_wheel_power_right.data = 0.0
             self.cur_wheel_power_left.data = 0.0
@@ -253,14 +253,7 @@ class Robot:
             e_pow["r"] = self.velocity_to_power(vr - self._wheel_velocity["r"])
             e_pow["l"] = self.velocity_to_power(vl - self._wheel_velocity["l"])
             for ddd in ["l", "r"]:
-                # Accumulate error
-                self.PID["E_k"][ddd] += e_pow[ddd]
-                e_wheel_pow_final[ddd] = self.PID["Kp"] * e_pow[ddd] + \
-                        self.PID["Ki"] * self.PID["E_k"][ddd] + \
-                        self.PID["Kd"] * (e_pow[ddd] - self.PID["e_k_1"][ddd])
-
-                # Store away previous error
-                self.PID["e_k_1"][ddd] = e_pow[ddd]
+                e_wheel_pow_final[ddd] = self.PID[ddd].output(e_pow[ddd])
 
             for ddd in ["l", "r"]:
                 vvv = vl

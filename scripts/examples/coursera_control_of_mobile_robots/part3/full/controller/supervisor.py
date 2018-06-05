@@ -145,7 +145,8 @@ class Supervisor:
         new_pose = Pose2D(0.0, 0.0, 0.0)
         new_pose.x = prev_pose.x + x_dt
         new_pose.y = prev_pose.y + y_dt
-        new_pose.theta = prev_pose.theta + theta_dt
+        theta_tmp = prev_pose.theta + theta_dt
+        new_pose.theta = math.atan2( math.cos(theta_tmp), math.sin(theta_tmp) )
 
         if True:
             rospy.loginfo(rospy.get_caller_id() + " prev l / r ticks: " +
